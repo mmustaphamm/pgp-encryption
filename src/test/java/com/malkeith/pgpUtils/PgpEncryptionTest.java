@@ -42,6 +42,18 @@ public class PgpEncryptionTest {
 
     private static final String testString = "This text needs to be PGP encrypted";
 
+    @BeforeClass
+    public static void construct() throws IOException {
+        tempFolder.delete();
+        tempFolder.create();
+    }
+
+    @AfterClass
+    public static void destroy() {
+        tempFolder.delete();
+    }
+
+
     @Before
     public void init() {
         pgpEncryptionUtil = PgpEncryptionUtil.builder()
@@ -68,5 +80,54 @@ public class PgpEncryptionTest {
         // Comparing the original test string with string generated using the decrypted bytes
         assertEquals(testString, new String(decryptedBytes, Charset.defaultCharset()));
     }
+
+    @Test
+    public void testFileEncryption() throws IOException, URISyntaxException, PGPException {
+        // Generating a pgp encrypted temp file from the test file
+        File encryptedFile = tempFolder.newFile();
+        File originalFile = new File(testFile.toURI());
+        try (OutputStream fos = Files.newOutputStream(encryptedFile.toPath())) {
+            pgpEncryptionUtil.encrypt(fos, Files.newInputStream(originalFile.toPath()), originalFile.length(),
+                    publicKey.openStream());
+        }
+        // Decrypting the generated pgp encrypted temp file and writing to another temp file
+        File decryptedFile = tempFolder.newFile();
+        pgpDecryptionUtil.decrypt(Files.newInputStream(encryptedFile.toPath()), Files.newOutputStream(decryptedFile.toPath()));
+        // Comparing the original file contents with the decrypted file contents
+        assertEquals(IOUtils.toString(Files.newInputStream(originalFile.toPath()), Charset.defaultCharset()),
+                IOUtils.toString(Files.newInputStream(decryptedFile.toPath()), Charset.defaultCharset()));
+    }
+
+    @Test
+    public void testInputStreamEncryption() throws IOException, URISyntaxException, PGPException {
+        // Generating a pgp encrypted input stream from the test file
+        File originalFile = new File(testFile.toURI());
+        InputStream encryptedIn = pgpEncryptionUtil.encrypt(Files.newInputStream(originalFile.toPath()), originalFile.length(), publicKey.openStream());
+        // Decrypting the generated input stream and writing to a temp file
+        File decryptedFile = tempFolder.newFile();
+        pgpDecryptionUtil.decrypt(encryptedIn, Files.newOutputStream(decryptedFile.toPath()));
+        // Comparing the original file contents with the decrypted file contents
+        assertEquals(IOUtils.toString(Files.newInputStream(originalFile.toPath()), Charset.defaultCharset()),
+                IOUtils.toString(Files.newInputStream(decryptedFile.toPath()), Charset.defaultCharset()));
+    }
+
+
+    @Test
+    public void testByteEncryptionWithNewConf() throws IOException, PGPException {
+        pgpEncryptionUtil = PgpEncryptionUtil.builder()
+                .armor(false)
+                .compressionAlgorithm(CompressionAlgorithmTags.BZIP2)
+                .symmetricKeyAlgorithm(SymmetricKeyAlgorithmTags.BLOWFISH)
+                .withIntegrityCheck(false)
+                .build();
+        // Encrypting the test bytes
+        byte[] encryptedBytes = pgpEncryptionUtil.encrypt(testString.getBytes(Charset.defaultCharset()),
+                publicKey.openStream());
+        // Decrypting the generated encrypted bytes
+        byte[] decryptedBytes = pgpDecryptionUtil.decrypt(encryptedBytes);
+        // Comparing the original test string with string generated using the decrypted bytes
+        assertEquals(testString, new String(decryptedBytes, Charset.defaultCharset()));
+    }
+
 
 }
